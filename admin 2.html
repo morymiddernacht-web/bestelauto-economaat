@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beheer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="lockScreen" class="lock">
+  <div class="lock-box">
+    <div class="section-label">Wachtwoord</div>
+    <input type="password" id="pwInput" placeholder="Wachtwoord">
+    <button class="submit" id="pwBtn">Ontgrendel</button>
+    <div class="lock-error" id="pwError">Fout wachtwoord.</div>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+  <header>
+    <h1>Beheer</h1>
+    <a href="index.html" class="admin-link">Bestellen</a>
+  </header>
+
+  <main>
+    <div class="section-label">Producten beheren</div>
+    <div id="productList"></div>
+    <div class="addbar">
+      <input type="text" id="newProductInput" placeholder="Nieuw product">
+      <button id="addProductBtn">Toevoegen</button>
+    </div>
+
+    <div class="section-label" style="margin-top:32px;">Binnengekomen bestellingen</div>
+    <div id="orderList"></div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// --- Wachtwoordscherm ---
+// Let op: dit is enkel een drempel voor gewone bezoekers, geen echte
+// beveiliging op databaseniveau (zie schema.sql).
+const lockScreen = document.getElementById('lockScreen');
+const app = document.getElementById('app');
+
+if(sessionStorage.getItem('admin_ok') === 'yes'){
+  unlock();
+}
+
+document.getElementById('pwBtn').onclick = checkPassword;
+document.getElementById('pwInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter') checkPassword();
+});
+
+function checkPassword(){
+  const val = document.getElementById('pwInput').value;
+  if(val === ADMIN_PASSWORD){
+    sessionStorage.setItem('admin_ok', 'yes');
+    unlock();
+  } else {
+    document.getElementById('pwError').style.display = 'block';
+  }
+}
+
+function unlock(){
+  lockScreen.style.display = 'none';
+  app.style.display = 'block';
+  loadProducts();
+  loadOrders();
+}
+
+// --- Producten ---
+let products = [];
+const productList = document.getElementById('productList');
+
+async function loadProducts(){
+  const { data, error } = await sb.from('products').select('*').order('created_at');
+  if(error){ console.error(error); return; }
+  products = data;
+  renderProducts();
+}
+
+function renderProducts(){
+  productList.innerHTML = '';
+  if(products.length === 0){
+    productList.innerHTML = '<div class="empty">Nog geen producten. Voeg er hieronder een toe.</div>';
+  }
+  products.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'admin-row';
+    row.innerHTML = `
+      <input type="text" value="${escapeHtml(p.name)}">
+      <button class="iconbtn danger">Verwijder</button>
+    `;
+    row.querySelector('input').onchange = async (e) => {
+      const newName = e.target.value.trim();
+      if(!newName) return;
+      await sb.from('products').update({ name: newName }).eq('id', p.id);
+      loadProducts();
+    };
+    row.querySelector('button').onclick = async () => {
+      await sb.from('products').delete().eq('id', p.id);
+      loadProducts();
+    };
+    productList.appendChild(row);
+  });
+}
+
+document.getElementById('addProductBtn').onclick = async () => {
+  const input = document.getElementById('newProductInput');
+  const name = input.value.trim();
+  if(!name) return;
+  await sb.from('products').insert({ name });
+  input.value = '';
+  loadProducts();
+};
+
+// --- Bestellingen ---
+const orderList = document.getElementById('orderList');
+
+async function loadOrders(){
+  const { data, error } = await sb.from('orders').select('*').order('created_at', { ascending: false });
+  if(error){ console.error(error); return; }
+  renderOrders(data);
+}
+
+function renderOrders(orders){
+  orderList.innerHTML = '';
+  if(orders.length === 0){
+    orderList.innerHTML = '<div class="empty">Nog geen bestellingen binnengekomen.</div>';
+    return;
+  }
+  orders.forEach(o => {
+    const card = document.createElement('div');
+    card.className = 'order-card' + (o.done ? ' done' : '');
+    const time = new Date(o.created_at).toLocaleString('nl-BE');
+    card.innerHTML = `
+      <div class="order-top"><span>${time}</span><span>${o.done ? 'afgewerkt' : 'open'}</span></div>
+      <div class="order-main">${escapeHtml(o.product)} — team ${escapeHtml(o.team)}</div>
+      <div class="order-tags"><span>${o.delivery === 'levering' ? 'Laten leveren' : 'Zelf afhalen'}</span></div>
+      <div class="order-actions">
+        <button class="iconbtn" data-action="toggle">${o.done ? 'Heropen' : 'Markeer afgewerkt'}</button>
+        <button class="iconbtn danger" data-action="delete">Verwijder</button>
+      </div>
+    `;
+    card.querySelector('[data-action="toggle"]').onclick = async () => {
+      await sb.from('orders').update({ done: !o.done }).eq('id', o.id);
+      loadOrders();
+    };
+    card.querySelector('[data-action="delete"]').onclick = async () => {
+      await sb.from('orders').delete().eq('id', o.id);
+      loadOrders();
+    };
+    orderList.appendChild(card);
+  });
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Economaat</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>Economaat</h1>
+  <a href="admin.html" class="admin-link">Beheer</a>
+</header>
+
+<main>
+  <div class="section-label">Product</div>
+  <div class="grid" id="productGrid"></div>
+
+  <div class="section-label">Team</div>
+  <input type="text" id="teamInput" placeholder="Naam van je team">
+
+  <div class="section-label">Levering</div>
+  <div class="row2">
+    <div class="pick" data-delivery="levering">Laten leveren</div>
+    <div class="pick" data-delivery="afhalen">Zelf afhalen</div>
+  </div>
+
+  <button class="submit" id="submitBtn" disabled>Bestelling plaatsen</button>
+  <div class="toast" id="toast">Bestelling ontvangen.</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let products = [];
+let selectedProduct = null;
+let selectedDelivery = null;
+
+const productGrid = document.getElementById('productGrid');
+const teamInput = document.getElementById('teamInput');
+const submitBtn = document.getElementById('submitBtn');
+const toast = document.getElementById('toast');
+
+async function loadProducts(){
+  const { data, error } = await sb.from('products').select('*').order('created_at');
+  if(error){ console.error(error); return; }
+  products = data;
+  renderProducts();
+}
+
+function renderProducts(){
+  productGrid.innerHTML = '';
+  if(products.length === 0){
+    productGrid.innerHTML = '<div class="empty">Nog geen producten beschikbaar.</div>';
+    return;
+  }
+  products.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'pick' + (selectedProduct === p.id ? ' selected' : '');
+    div.textContent = p.name;
+    div.onclick = () => { selectedProduct = p.id; renderProducts(); checkReady(); };
+    productGrid.appendChild(div);
+  });
+}
+
+document.querySelectorAll('[data-delivery]').forEach(el => {
+  el.onclick = () => {
+    selectedDelivery = el.dataset.delivery;
+    document.querySelectorAll('[data-delivery]').forEach(x => x.classList.remove('selected'));
+    el.classList.add('selected');
+    checkReady();
+  };
+});
+
+teamInput.oninput = checkReady;
+
+function checkReady(){
+  submitBtn.disabled = !(selectedProduct && selectedDelivery && teamInput.value.trim());
+}
+
+submitBtn.onclick = async () => {
+  const product = products.find(p => p.id === selectedProduct);
+  if(!product) return;
+  submitBtn.disabled = true;
+
+  const { error } = await sb.from('orders').insert({
+    product: product.name,
+    team: teamInput.value.trim(),
+    delivery: selectedDelivery
+  });
+
+  if(error){
+    console.error(error);
+    alert('Bestelling plaatsen is mislukt, probeer opnieuw.');
+    checkReady();
+    return;
+  }
+
+  selectedProduct = null;
+  selectedDelivery = null;
+  teamInput.value = '';
+  document.querySelectorAll('[data-delivery]').forEach(x => x.classList.remove('selected'));
+  renderProducts();
+
+  toast.style.display = 'block';
+  setTimeout(() => toast.style.display = 'none', 2500);
+};
+
+loadProducts();
+</script>
+
+</body>
+</html>
