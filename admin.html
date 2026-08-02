@@ -138,9 +138,12 @@ function renderOrders(orders){
     const card = document.createElement('div');
     card.className = 'order-card' + (o.done ? ' done' : '');
     const time = new Date(o.created_at).toLocaleString('nl-BE');
+    const itemsHtml = (o.items || []).map(it =>
+      `${it.quantity}x ${escapeHtml(it.name)}`
+    ).join('<br>');
     card.innerHTML = `
       <div class="order-top"><span>${time}</span><span>${o.done ? 'afgewerkt' : 'open'}</span></div>
-      <div class="order-main">${escapeHtml(o.product)} — team ${escapeHtml(o.team)}</div>
+      <div class="order-main">${itemsHtml}<br><span style="font-size:13px;color:#8a8880;">team ${escapeHtml(o.team)}</span></div>
       <div class="order-tags"><span>${o.delivery === 'levering' ? 'Laten leveren' : 'Zelf afhalen'}</span></div>
       <div class="order-actions">
         <button class="iconbtn" data-action="toggle">${o.done ? 'Heropen' : 'Markeer afgewerkt'}</button>
